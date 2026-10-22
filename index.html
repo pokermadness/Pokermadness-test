@@ -157,11 +157,17 @@ const URL_KILLS=BASE+"0";
 // Tabellenblatt mit "Runde 1 / Platz / Runde 2 / Platz ..." -> hier die gid eintragen (Blatt veroeffentlichen als CSV)
 const GID_RUNDEN="156592382";
 const MAX_RUNDEN=12;
+// Tab "Eingabe" als CSV veroeffentlichen und hier die gid eintragen (Kills pro Spieltag)
+const GID_EINGABE="";
+// Kills pro Spieltag (aus der Spalte "Spieltag" der Kill-Liste, Spieltage 1 bis 10).
+// Wird benutzt, solange das Sheet die Kills pro Spieltag nicht selbst liefert.
+// Kills, die hier noch fehlen (neuer Abend), zaehlen automatisch zum neuesten Spieltag.
+const STATIC_KS={"1":{"Ben":1,"Michel":3,"Dawod":1,"Matze":4,"Chris":4,"Puje":8,"Markus E.":2,"Rocco":1,"Andy":3,"Dennis":1,"Valerie":1},"2":{"Ralf":1,"Markus E.":1,"Matze":4,"Samed":8,"Ben":2,"Chris":1,"Boran":3},"3":{"Michel":3,"Dawod":6,"Andy":3,"Chris":1,"Dennis":1,"Boran":2,"Puje":2,"Rocco":4,"Valerie":2,"Gabriel":1},"4":{"Chris":4,"Ralf":5,"Andy":3,"Ben":1,"Puje":2,"Samed":3},"5":{"Valerie":2,"Puje":1,"Dennis":2,"Gabriel":2,"Matze":1,"Andy":3,"Boran":3,"Michel":2,"Rocco":9},"6":{"Matze":6,"Gabriel":1,"Rocco":3,"Boran":1,"Andy":7,"Puje":3,"Markus E.":1,"Dennis":3},"7":{"Rocco":5,"Ralf":1,"Matze":1,"Gabriel":6,"Markus E.":1},"8":{"Samed":5,"Chris":1,"Dennis":6,"Boran":1,"Puje":1,"Dawod":1,"Rocco":2},"9":{"Boran":2,"Chris":1,"Matze":4,"Andy":1,"Rocco":5,"Samed":6},"10":{"Chris":1,"Gabriel":3,"Samed":5,"Andy":5,"Boran":2}};
 const LOGIN_VERSION="1";
 const STAY_DAYS=90;
 
 const $=id=>document.getElementById(id);
-const S={rank:null,kills:{},deaths:{},H:null,demo:false};
+const S={rank:null,kills:{},deaths:{},H:null,KS:null,demo:false};
 
 function doLogin(){
   if($("pw").value.toLowerCase()==="legendhand"){
@@ -211,13 +217,39 @@ function rankify(a){
   return a;
 }
 
-function apply(rk,kl,hs){
-  S.kills={};S.deaths={};S.H=null;
+function apply(rk,kl,hs,ei){
+  S.kills={};S.deaths={};S.H=null;S.KS=null;
+  if(kl)kills(kl);
+  let N=0;
+  try{const h0=hs?hist(hs):null;N=h0?h0.N:0}catch(e){}
+  const mt={};Object.keys(S.kills).forEach(n=>mt[n]=sum(S.kills[n]));
+  const total=ks=>{const t={};Object.values(ks).forEach(m=>Object.entries(m).forEach(([n,c])=>t[n]=(t[n]||0)+c));return t};
+  // 1) Kills pro Spieltag aus dem Sheet (nur wenn die Summen zur Kill-Matrix passen)
+  if(ei)try{
+    const pd=perDay(ei),t=total(pd);
+    const names=new Set([...Object.keys(t),...Object.keys(mt)]);
+    let ok=Object.keys(pd).length>0;
+    names.forEach(n=>{if((t[n]||0)!==(mt[n]||0))ok=false});
+    if(ok)S.KS=pd;
+  }catch(e){}
+  // 2) sonst: eingebaute Liste; fehlende Kills zaehlen zum neuesten Spieltag
+  if(!S.KS&&N>0)try{
+    const st={};Object.entries(STATIC_KS).forEach(([d,m])=>{if(+d<=N)st[d]={...m}});
+    const t=total(st);let ok=true;const rest={};
+    new Set([...Object.keys(t),...Object.keys(mt)]).forEach(n=>{const r=(mt[n]||0)-(t[n]||0);if(r<0)ok=false;else if(r>0)rest[n]=r});
+    if(ok){if(Object.keys(rest).length){st[N]=st[N]||{};Object.entries(rest).forEach(([n,c])=>st[N][n]=(st[N][n]||0)+c)}S.KS=st}
+  }catch(e){}
   if(hs)try{S.H=hist(hs)}catch(e){}
   const d=[];
-  rk.slice(1).forEach(r=>{if(r.length>=3&&r[0])d.push({n:r[0],p:parseInt(r[1])||0,t:parseInt(r[2])||0})});
+  rk.slice(1).forEach(r=>{
+    if(r.length<3||!r[0])return;
+    let p=parseInt(r[1]),t=parseInt(r[2]);
+    const hh=S.H?S.H.all[S.H.N-1].find(x=>x.n===r[0]):null;
+    if(isNaN(t))t=hh?hh.t:0;       // Fehler im Sheet (z. B. #REF!) abfangen
+    if(isNaN(p))p=hh?hh.p:0;
+    d.push({n:r[0],p,t});
+  });
   S.rank=rankify(d);
-  if(kl)kills(kl);
   renderAll();
 }
 async function load(){
@@ -229,7 +261,10 @@ async function load(){
   }
   let h=null;
   if(GID_RUNDEN)try{h=await get(BASE+GID_RUNDEN)}catch(e){}
-  apply(a.value,b.status==="fulfilled"?b.value:null,h);
+  let ei=null;
+  if(GID_EINGABE)try{ei=await get(BASE+GID_EINGABE)}catch(e){}
+  if(!ei)ei=embedded(a.value);
+  apply(a.value,b.status==="fulfilled"?b.value:null,h,ei);
 }
 function demo(){
   const R="Spieler,Punkte,Teilnahmen,Runde 1,Platz,Runde 2,Platz,Runde 3,Platz\n,,,8,8,8,8,8,8\nAndy,26,3,13,2,5,8,8,1\nBen,21,3,9,5,12,3,0,0\nChris,24,3,10,4,6,6,8,2\nDawod,13,2,0,0,13,2,0,0\nRocco,31,3,14,1,8,5,9,4\nSamed,18,3,6,7,7,7,5,6\nMatze,0,0,,,,,,";
@@ -238,6 +273,28 @@ function demo(){
   apply(csv(R),csv(K),csv(R));
 }
 
+// Alternative ohne Veroeffentlichen: Block "Spieler | Kills | Spieltag" liegt rechts in der Rangliste
+function embedded(rows){
+  for(let r=0;r<Math.min(rows.length,5);r++){
+    const h=rows[r];
+    for(let i=0;i<h.length-2;i++){
+      if(/^spieler$/i.test(h[i])&&/^kills?$/i.test(h[i+1]))
+        return rows.slice(r+1).map(x=>[x[i]||"",x[i+1]||"",x[i+2]||""]);
+    }
+  }
+  return null;
+}
+function perDay(rows){
+  const out={};let day=null;
+  rows.forEach(r=>{
+    const a=r[0],b=r[1];if(!a||!b)return;
+    if(/^(spieler|kills?)$/i.test(a))return;
+    const d=parseInt(r[2]);if(d>0)day=d;
+    if(!day)return;
+    const m=out[day]=out[day]||{};m[a]=(m[a]||0)+1;
+  });
+  return out;
+}
 function kills(rows){
   const v=rows[0];
   rows.slice(1).forEach(r=>{
@@ -265,8 +322,11 @@ function hist(rows){
   let N=0;pl.forEach(p=>p.pts.forEach((v,i)=>{if(v!==null&&i+1>N)N=i+1}));
   if(!N)return null;
   const at=k=>rankify(pl.map(p=>{
-    const s=p.pts.slice(0,k).filter(v=>v!==null);
-    return{n:p.n,p:s.reduce((a,b)=>a+b,0),t:s.length,g:p.pts[k-1]};
+    const sp=p.pts.slice(0,k).filter(v=>v!==null);
+    let kp=0;
+    if(S.KS)for(let j=1;j<=k;j++)kp+=(S.KS[j]&&S.KS[j][p.n])||0;
+    const kg=S.KS?((S.KS[k]&&S.KS[k][p.n])||0):0,g=p.pts[k-1];
+    return{n:p.n,p:sp.reduce((a,b)=>a+b,0)+kp,t:sp.length,g:(g===null&&!kg)?null:(g||0)+kg};
   }));
   const H2={N,at};H2.all=Array.from({length:N},(_,i)=>at(i+1));return H2;
 }
@@ -280,7 +340,7 @@ const fmt=t=>t.names.join(", ")+" ("+t.n+")";
 
 function deltas(k){
   if(!S.H||k<2)return null;
-  const cu=(k===S.H.N&&S.rank)?S.rank:S.H.at(k),prev=S.H.at(k-1),pm={};
+  const cu=(k===S.H.N&&S.rank&&!S.KS)?S.rank:S.H.at(k),prev=S.H.at(k-1),pm={};
   prev.forEach(d=>pm[d.n]=d.r);
   const o={};cu.forEach(d=>o[d.n]=(d.n in pm)?pm[d.n]-d.r:null);return o;
 }
@@ -330,7 +390,7 @@ function renderTable(){
     rows.forEach(r=>r.g=(r.n in gm)?gm[r.n]:undefined);
   }
   $("rh").textContent=S.demo?"Rangliste (Demo)":"Rangliste";
-  $("hint").classList.toggle("hidden",!(H&&cur<N));
+  $("hint").classList.toggle("hidden",!(H&&cur<N&&!S.KS));
   $("chips").innerHTML=H?Array.from({length:N},(_,i)=>`<button class="chip ${i+1===cur?"on":""}" onclick="sel(${i+1})">${i+1}</button>`).join(""):"";
   $("rank").innerHTML=rows.map((d,i)=>{
     const f=d.r<=6,last=f&&(!rows[i+1]||rows[i+1].r>6);
@@ -343,7 +403,7 @@ function renderTable(){
       info+=`<div>Kills: <b>${k}</b>${o?` · Top Kill: <b>${fmt(o)}</b>`:""}</div>`;
       info+=`<div>Busted: <b>${de}</b>${nm?` · Top Busted: <b>${fmt(nm)}</b>`:""}</div>`;
     }else info+="<div>Noch keine Daten erfasst.</div>";
-    if(tt.length)info+=`<div>Titel: <b>${tt.length}</b> · ${tt.slice().sort((a,b)=>a-b).join(", ")}</div>`;
+    if(tt.length)info+=`<div>Ringe: <b>${tt.length}</b> · ${tt.slice().sort((a,b)=>a-b).join(", ")}</div>`;
     if(H&&H.N>=2)info+=chartBox(d.n);
     return `<tr class="clk ${f?"fin":""} ${last?"cut":""}" onclick="this.nextElementSibling.classList.toggle('hidden')"><td>${d.r}.</td><td>${dv}</td><td class="nm">${d.n}${tt.length?ring(tt.length):""}</td><td>${gv}</td><td>${d.p}</td><td>${d.t}</td></tr><tr class="det hidden"><td colspan="6">${info}</td></tr>`;
   }).join("");
