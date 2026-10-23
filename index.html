@@ -69,7 +69,8 @@ td.nm{text-align:left;padding-left:14px}
 .rt th{font-size:var(--th);font-weight:800;white-space:nowrap;padding:13px 1px}
 .rt td{font-size:var(--td)}
 .rt tr.det td{font-size:var(--info)}
-.rt td.nm,.rt tr.clk td.nm{text-align:left;padding-left:12px;padding-right:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rt td.nm,.rt tr.clk td.nm{text-align:left;padding-left:12px;padding-right:2px}
+.nmi{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rt tr.clk td{padding:14px 2px}
 .rt tr.clk{animation:rowin .5s ease backwards;animation-delay:calc(var(--i,0)*45ms);transition:background .2s}
 .rt tr.clk:active td{background:rgba(255,255,255,.07)}
@@ -439,7 +440,7 @@ function renderTable(){
     }else info+="<div>Noch keine Daten erfasst.</div>";
     if(tt.length)info+=`<div>Ringe: <b>${tt.length}</b> · ${tt.slice().sort((a,b)=>a-b).join(", ")}</div>`;
     if(H&&H.N>=2)info+=chartBox(d.n);
-    return `<tr class="clk ${f?"fin":""} ${last?"cut":""}" style="--i:${Math.min(i,14)}" onclick="this.nextElementSibling.classList.toggle('hidden')"><td>${d.r}.</td><td>${dv}</td><td class="nm">${d.n}${tt.length?ring(tt.length):""}</td><td>${gv}</td><td>${d.p}</td><td>${d.t}</td></tr><tr class="det hidden"><td colspan="6">${info}</td></tr>`;
+    return `<tr class="clk ${f?"fin":""} ${last?"cut":""}" style="--i:${Math.min(i,14)}" onclick="this.nextElementSibling.classList.toggle('hidden')"><td>${d.r}.</td><td>${dv}</td><td class="nm"><span class="nmi">${d.n}${tt.length?ring(tt.length):""}</span></td><td>${gv}</td><td>${d.p}</td><td>${d.t}</td></tr><tr class="det hidden"><td colspan="6">${info}</td></tr>`;
   }).join("");
 }
 
